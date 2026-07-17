@@ -19,6 +19,19 @@ We will increment `Z` for non-breaking changes:
 
 ## Breaking change changelog
 
+### 0.19.0
+
+This minor release does **not** introduce a breaking change. The minor version bump reflects a significant new OpenAI Responses feature area: Programmatic Tool Calling.
+
+Highlights:
+
+-   Added [`ProgrammaticToolCallingTool`][agents.tool.ProgrammaticToolCallingTool], which lets supported OpenAI Responses models generate JavaScript that coordinates eligible function, custom, shell, apply-patch, hosted MCP, and code-interpreter tools.
+-   Added per-tool `allowed_callers` controls for direct and programmatic invocation. Structured function-tool return annotations can now provide strict output schemas to generated programs, with explicit `output_type` and `output_json_schema` overrides when needed.
+-   Integrated program-owned calls with Runner results and streaming, tool guardrails, approvals, timeouts, retries, sessions, and `RunState` pause/resume behavior. See [Programmatic Tool Calling](tools.md#programmatic-tool-calling) for setup and constraints.
+-   Updated nested handoff history compaction to preserve lossless message items in their original positions, insert ordered assistant summary segments around them, and avoid replaying exact session item occurrences that the nested history already owns.
+-   Function-tool approval callables now fail closed when arguments are malformed JSON, are not a JSON object, or contain non-standard numeric constants. The callable is skipped and the tool call requires manual approval in both Runner and Realtime flows.
+-   Google-style function docstrings now support `Args:`, `Arguments:`, `Params:`, or `Parameters:` sections immediately after summary text without requiring an intervening blank line.
+
 ### 0.18.0
 
 This minor release does **not** introduce a breaking change. The minor version bump is for the Realtime agents default model update only.

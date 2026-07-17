@@ -16,6 +16,7 @@ Use this page as a catalog, then jump to the section that matches the runtime yo
 | --- | --- |
 | Use OpenAI-managed tools (web search, file search, code interpreter, hosted MCP, image generation) | [Hosted tools](#hosted-tools) |
 | Defer large tool surfaces until runtime with tool search | [Hosted tool search](#hosted-tool-search) |
+| Coordinate several tool calls from generated JavaScript | [Programmatic Tool Calling](#programmatic-tool-calling) |
 | Run tools in your own process or environment | [Local runtime tools](#local-runtime-tools) |
 | Wrap Python functions as tools | [Function tools](#function-tools) |
 | Let one agent call another without a handoff | [Agents as tools](#agents-as-tools) |
@@ -31,6 +32,7 @@ OpenAI offers a few built-in tools when using the [`OpenAIResponsesModel`][agent
 -   The [`HostedMCPTool`][agents.tool.HostedMCPTool] exposes a remote MCP server's tools to the model.
 -   The [`ImageGenerationTool`][agents.tool.ImageGenerationTool] generates images from a prompt.
 -   The [`ToolSearchTool`][agents.tool.ToolSearchTool] lets the model load deferred tools, namespaces, or hosted MCP servers on demand.
+-   The [`ProgrammaticToolCallingTool`][agents.tool.ProgrammaticToolCallingTool] lets the model coordinate eligible tools from generated JavaScript.
 
 Advanced hosted search options:
 
@@ -118,6 +120,59 @@ What to know:
 -   Tool search activity appears in [`RunResult.new_items`](results.md#new-items) and in [`RunItemStreamEvent`](streaming.md#run-item-event-names) with dedicated item and event types.
 -   See `examples/tools/tool_search.py` for complete runnable examples covering both namespaced loading and top-level deferred tools.
 -   Official platform guide: [Tool search](https://developers.openai.com/api/docs/guides/tools-tool-search).
+
+### Programmatic Tool Calling
+
+Programmatic Tool Calling lets a supported OpenAI Responses model generate JavaScript that calls eligible tools, combines their outputs, and returns one result to the model. It is useful for bounded workflows that benefit from loops, branching, parallel calls, or intermediate calculations without a model round trip after every tool call.
+
+The generated program runs in a fresh hosted V8 environment. It does not have Node.js APIs, filesystem or network access, or a persistent process. The program can interact only with tools that you explicitly allow.
+
+```python
+from pydantic import BaseModel
+
+from agents import (
+    Agent,
+    ModelSettings,
+    ProgrammaticToolCallingTool,
+    Runner,
+    function_tool,
+)
+
+
+class InventoryOutput(BaseModel):
+    sku: str
+    available_units: int
+
+
+@function_tool(allowed_callers=["programmatic"])
+def get_inventory(sku: str) -> InventoryOutput:
+    return InventoryOutput(sku=sku, available_units=42)
+
+
+agent = Agent(
+    name="Inventory planner",
+    model="gpt-5.6",
+    model_settings=ModelSettings(tool_choice="programmatic_tool_calling"),
+    tools=[get_inventory, ProgrammaticToolCallingTool()],
+)
+
+result = Runner.run_sync(agent, "Check inventory for desk-lamp and summarize it.")
+print(result.final_output)
+```
+
+What to know:
+
+-   Programmatic Tool Calling is available only with supported OpenAI Responses models. `ProgrammaticToolCallingTool()` and `tool_choice="programmatic_tool_calling"` are rejected by Chat Completions models and non-Responses backends.
+-   Add at most one `ProgrammaticToolCallingTool()` to an agent. The agent must also expose at least one programmatically callable tool, a `ToolSearchTool()`, or a prompt-managed tool surface.
+-   `allowed_callers` controls how a tool may be invoked. Omitting it allows direct model calls only. Use `["programmatic"]` for program-only access or `["direct", "programmatic"]` to allow both.
+-   SDK tool types that can opt in are `FunctionTool`, `CustomTool`, `ShellTool`, `ApplyPatchTool`, `HostedMCPTool`, and `CodeInterpreterTool`. Function, custom, shell, and apply-patch tools expose `allowed_callers` directly. For hosted MCP and code interpreter, set `allowed_callers` inside `tool_config`.
+-   For `@function_tool(allowed_callers=[...])`, a structured return annotation such as a Pydantic model, TypedDict, or dataclass automatically becomes a strict object output schema and is validated before the value is returned to the program. Use `output_type=...` when the function has no usable annotation, or the lower-level `output_json_schema={...}` escape hatch when you already have a strict object schema. `output_type` and `output_json_schema` are mutually exclusive. Plain `str`, `Any`, and `None` returns remain untyped.
+-   Program-owned SDK tools still use the normal Runner lifecycle. Tool input and output guardrails, hooks, timeouts, concurrency limits, retries, approvals, sessions, and `RunState` pause/resume behavior continue to apply, and the SDK preserves each child call's program caller relationship.
+-   Approval-sensitive or high-impact tools are usually better kept as direct calls so a person can review each action before it becomes part of a larger program. If a program-owned call pauses for approval, resolve the interruption through `RunState` and resume the original run as usual.
+-   Programmatic Tool Calling can be combined with [hosted tool search](#hosted-tool-search). The model must load deferred tools before a generated program can call them.
+-   A `program` item and its program-owned child calls appear as [`ToolCallItem`][agents.items.ToolCallItem] entries. The matching `program_output` appears as a [`ToolCallOutputItem`][agents.items.ToolCallOutputItem]. See [Results](results.md#new-items) and [Streaming](streaming.md#run-item-event-names) for inspection details.
+-   See `examples/tools/programmatic_tool_calling.py` for a complete concurrent inventory-planning example.
+-   Official platform guide: [Programmatic Tool Calling](https://developers.openai.com/api/docs/guides/tools-programmatic-tool-calling).
 
 ### Hosted container shell + skills
 
@@ -432,7 +487,7 @@ tool = FunctionTool(
 As mentioned before, we automatically parse the function signature to extract the schema for the tool, and we parse the docstring to extract descriptions for the tool and for individual arguments. Some notes on that:
 
 1. The signature parsing is done via the `inspect` module. We use type annotations to understand the types for the arguments, and dynamically build a Pydantic model to represent the overall schema. It supports most types, including Python primitives, Pydantic models, TypedDicts, and more.
-2. We use `griffe` to parse docstrings. Supported docstring formats are `google`, `sphinx` and `numpy`. We attempt to automatically detect the docstring format, but this is best-effort and you can explicitly set it when calling `function_tool`. You can also disable docstring parsing by setting `use_docstring_info` to `False`.
+2. We use `griffe` to parse docstrings. Supported docstring formats are `google`, `sphinx` and `numpy`. We attempt to automatically detect the docstring format, but this is best-effort and you can explicitly set it when calling `function_tool`. You can also disable docstring parsing by setting `use_docstring_info` to `False`. For Google-style docstrings, the parser also accepts an `Args:`, `Arguments:`, `Params:`, or `Parameters:` section immediately after summary text without an intervening blank line.
 
 The code for the schema extraction lives in [`agents.function_schema`][].
 

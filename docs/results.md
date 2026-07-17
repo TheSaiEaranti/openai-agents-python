@@ -45,7 +45,7 @@ These surfaces answer different questions:
 | Property or helper | What it contains | Best for |
 | --- | --- | --- |
 | [`input`][agents.result.RunResultBase.input] | The base input for this run segment. If a handoff input filter rewrote the history, this reflects the filtered input the run continued with. | Auditing what this run actually used as input |
-| [`to_input_list()`][agents.result.RunResultBase.to_input_list] | An input-item view of the run. The default `mode="preserve_all"` keeps the full converted history from `new_items`; `mode="normalized"` prefers canonical continuation input when handoff filtering rewrites model history. | Manual chat loops, client-managed conversation state, and plain-item history inspection |
+| [`to_input_list()`][agents.result.RunResultBase.to_input_list] | An input-item view of the run. The default `mode="preserve_all"` keeps the converted history from `new_items`, except it does not append an exact session item occurrence already moved into SDK-default nested handoff history a second time; `mode="normalized"` prefers canonical continuation input when handoff filtering rewrites model history. | Manual chat loops, client-managed conversation state, and plain-item history inspection |
 | [`new_items`][agents.result.RunResultBase.new_items] | Rich [`RunItem`][agents.items.RunItem] wrappers with agent, tool, handoff, and approval metadata. | Logs, UIs, audits, and debugging |
 | [`raw_responses`][agents.result.RunResultBase.raw_responses] | Raw [`ModelResponse`][agents.items.ModelResponse] objects from each model call in the run. | Provider-level diagnostics or raw response inspection |
 
@@ -56,6 +56,8 @@ In practice:
 -   Use [`session=...`](sessions/index.md) when you want the SDK to load and save history for you.
 -   If you are using OpenAI server-managed state with `conversation_id` or `previous_response_id`, usually pass only the new user input and reuse the stored ID instead of resending `to_input_list()`.
 -   Use the default `to_input_list()` mode or `new_items` when you need the full converted history for logs, UIs, or audits.
+
+When SDK-default nested handoff history preserves a message item verbatim, Sessions, `RunState`, and `to_input_list()` track the exact owned occurrence rather than deduplicating by content. Identical messages that occurred separately remain separate; only the already-owned occurrence is kept from being appended a second time.
 
 Unlike the JavaScript SDK, Python does not expose a separate `output` property for the model-shaped delta only. Use `new_items` when you need SDK metadata, or inspect `raw_responses` when you need the raw model payloads.
 
@@ -75,6 +77,8 @@ Computer-tool replay follows the raw Responses payload shape. Preview-model `com
 Choose `new_items` over `to_input_list()` whenever you need agent associations, tool outputs, handoff boundaries, or approval boundaries.
 
 When you use hosted tool search, inspect `ToolSearchCallItem.raw_item` to see the search request the model emitted, and `ToolSearchOutputItem.raw_item` to see which namespaces, functions, or hosted MCP servers were loaded for that turn.
+
+With Programmatic Tool Calling, the generated `program` is a `ToolCallItem`, each child call owned by that program is also a `ToolCallItem`, and the matching `program_output` is a `ToolCallOutputItem`. Inspect `item.raw_item.type` to distinguish the program from its child calls, and inspect a child call's `caller` to find its parent program call ID.
 
 ## Continue or resume the conversation
 
