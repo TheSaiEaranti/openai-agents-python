@@ -72,13 +72,38 @@ Computer-tool replay follows the raw Responses payload shape. Preview-model `com
 -   [`ToolSearchCallItem`][agents.items.ToolSearchCallItem] and [`ToolSearchOutputItem`][agents.items.ToolSearchOutputItem] for Responses tool search requests and loaded tool-search results
 -   [`ToolCallItem`][agents.items.ToolCallItem] and [`ToolCallOutputItem`][agents.items.ToolCallOutputItem] for tool calls and their results
 -   [`ToolApprovalItem`][agents.items.ToolApprovalItem] for tool calls that paused for approval
+-   [`MCPApprovalRequestItem`][agents.items.MCPApprovalRequestItem], [`MCPApprovalResponseItem`][agents.items.MCPApprovalResponseItem], and [`MCPListToolsItem`][agents.items.MCPListToolsItem] for hosted MCP approvals and tool catalogs
 -   [`HandoffCallItem`][agents.items.HandoffCallItem] and [`HandoffOutputItem`][agents.items.HandoffOutputItem] for handoff requests and completed transfers
 
 Choose `new_items` over `to_input_list()` whenever you need agent associations, tool outputs, handoff boundaries, or approval boundaries.
 
 When you use hosted tool search, inspect `ToolSearchCallItem.raw_item` to see the search request the model emitted, and `ToolSearchOutputItem.raw_item` to see which namespaces, functions, or hosted MCP servers were loaded for that turn.
 
-With Programmatic Tool Calling, the generated `program` is a `ToolCallItem`, each child call owned by that program is also a `ToolCallItem`, and the matching `program_output` is a `ToolCallOutputItem`. Inspect `item.raw_item.type` to distinguish the program from its child calls, and inspect a child call's `caller` to find its parent program call ID.
+With Programmatic Tool Calling, the generated `program` is a `ToolCallItem`, ordinary child tool calls owned by that program are also `ToolCallItem` entries, and the matching `program_output` is a `ToolCallOutputItem`. Program-owned hosted MCP `mcp_approval_request` and `mcp_list_tools` items are exceptions: they become `MCPApprovalRequestItem` and `MCPListToolsItem` entries.
+
+Raw items can be typed Responses objects or mappings. In particular, program-owned shell and apply-patch calls use mappings. Use a mapping-safe inspection pattern:
+
+```python
+from collections.abc import Mapping
+
+
+def raw_field(item, name):
+    raw_item = item.raw_item
+    if isinstance(raw_item, Mapping):
+        return raw_item.get(name)
+    return getattr(raw_item, name, None)
+
+
+raw_type = raw_field(item, "type")
+caller = raw_field(item, "caller")
+caller_id = (
+    caller.get("caller_id")
+    if isinstance(caller, Mapping)
+    else getattr(caller, "caller_id", None)
+)
+```
+
+For a program-owned child call, `caller` has type `program`, and `caller_id` identifies the parent program call.
 
 ## Continue or resume the conversation
 
