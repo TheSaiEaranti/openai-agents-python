@@ -35,6 +35,7 @@ search:
 -   更新了嵌套任务转移历史压缩：在无损消息项的原始位置保留这些消息项，在其周围插入按顺序排列的助手摘要片段，并避免重复回放嵌套历史已包含的具体会话项。
 -   当参数是格式错误的 JSON、不是 JSON 对象或包含非标准数值常量时，工具调用审批可调用对象现在会默认拒绝。此时将跳过该可调用对象，并且在 Runner 和 Realtime 流程中，该工具调用都需要手动审批。
 -   Google 风格的函数文档字符串现在支持在摘要文本后紧接 `Args:`、`Arguments:`、`Params:` 或 `Parameters:` 部分，无须在中间添加空行。
+-   新增了通过 `VercelCloudBucketMountStrategy` 实现的[Vercel 沙箱创建时专用 S3 挂载](sandbox/clients.md#mounts-and-remote-storage)。包含挂载的会话会在工作区持久化时排除存储桶内容，并且有意不支持动态挂载更改或会话恢复。
 
 ### 0.18.0
 

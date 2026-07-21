@@ -35,6 +35,7 @@ search:
 -   중첩 핸드오프 기록 압축을 업데이트하여 손실 없는 메시지 항목을 원래 위치에 유지하고, 그 주변에 순서가 지정된 어시스턴트 요약 세그먼트를 삽입하며, 중첩 기록이 이미 소유한 정확히 동일한 세션 항목 인스턴스가 재생되지 않도록 했습니다.
 -   이제 함수 도구 승인 callable은 인수가 잘못된 JSON이거나 JSON 객체가 아니거나 비표준 숫자 상수를 포함하는 경우 안전하게 차단됩니다. Runner 및 Realtime 흐름 모두에서 callable을 건너뛰고 도구 호출에 수동 승인이 필요합니다.
 -   이제 Google 스타일 함수 docstring에서 요약 텍스트 바로 뒤에 빈 줄을 삽입하지 않아도 `Args:`, `Arguments:`, `Params:`, 또는 `Parameters:` 섹션을 사용할 수 있습니다.
+-   `VercelCloudBucketMountStrategy`를 사용하는 [Vercel 샌드박스용 생성 시점 전용 S3 마운트](sandbox/clients.md#mounts-and-remote-storage)를 추가했습니다. 마운트가 포함된 세션에서는 워크스페이스 영속화 시 버킷 콘텐츠를 제외하며, 동적 마운트 변경과 세션 재개를 의도적으로 지원하지 않습니다.
 
 ### 0.18.0
 

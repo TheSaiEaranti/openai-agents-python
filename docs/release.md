@@ -31,6 +31,7 @@ Highlights:
 -   Updated nested handoff history compaction to preserve lossless message items in their original positions, insert ordered assistant summary segments around them, and avoid replaying exact session item occurrences that the nested history already owns.
 -   Function-tool approval callables now fail closed when arguments are malformed JSON, are not a JSON object, or contain non-standard numeric constants. The callable is skipped and the tool call requires manual approval in both Runner and Realtime flows.
 -   Google-style function docstrings now support `Args:`, `Arguments:`, `Params:`, or `Parameters:` sections immediately after summary text without requiring an intervening blank line.
+-   Added [create-time-only S3 mounts for Vercel sandboxes](sandbox/clients.md#mounts-and-remote-storage) through `VercelCloudBucketMountStrategy`. Mounted sessions exclude bucket contents from workspace persistence and intentionally do not support dynamic mount changes or session resume.
 
 ### 0.18.0
 
