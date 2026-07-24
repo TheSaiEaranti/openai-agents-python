@@ -100,9 +100,10 @@ if result.interruptions:
 ```python
 import asyncio
 import random
-from agents import Agent, ItemHelpers, Runner, function_tool
+from agents import Agent, ItemHelpers, Runner
+from agents.decorators import tool
 
-@function_tool
+@tool
 def how_many_jokes() -> int:
     return random.randint(1, 10)
 

@@ -265,11 +265,11 @@ Use `get_hosted_agent_metadata()` when a tool needs caller-aware logging or auth
 ```python
 from typing import Any
 
-from agents import function_tool
+from agents.decorators import tool
 from agents.extensions.experimental.hosted_multi_agent import get_hosted_agent_metadata
 from agents.tool_context import ToolContext
 
-@function_tool
+@tool
 def lookup_document(ctx: ToolContext[Any], section: str) -> str:
     metadata = get_hosted_agent_metadata(ctx)
     caller = metadata.agent_name if metadata else "unknown"

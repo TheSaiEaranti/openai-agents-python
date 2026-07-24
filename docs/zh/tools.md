@@ -71,10 +71,11 @@ async def main():
 ```python
 from typing import Annotated
 
-from agents import Agent, Runner, ToolSearchTool, function_tool, tool_namespace
+from agents import Agent, Runner, ToolSearchTool, tool_namespace
+from agents.decorators import tool
 
 
-@function_tool(defer_loading=True)
+@tool(defer_loading=True)
 def get_customer_profile(
     customer_id: Annotated[str, "The customer ID to look up."],
 ) -> str:
@@ -82,7 +83,7 @@ def get_customer_profile(
     return f"profile for {customer_id}"
 
 
-@function_tool(defer_loading=True)
+@tool(defer_loading=True)
 def list_open_orders(
     customer_id: Annotated[str, "The customer ID to look up."],
 ) -> str:
@@ -139,8 +140,8 @@ from agents import (
     ModelSettings,
     ProgrammaticToolCallingTool,
     Runner,
-    function_tool,
 )
+from agents.decorators import tool
 
 
 class InventoryOutput(BaseModel):
@@ -148,7 +149,7 @@ class InventoryOutput(BaseModel):
     available_units: int
 
 
-@function_tool(allowed_callers=["programmatic"])
+@tool(allowed_callers=["programmatic"])
 def get_inventory(sku: str) -> InventoryOutput:
     return InventoryOutput(sku=sku, available_units=42)
 
@@ -318,14 +319,15 @@ import json
 
 from typing_extensions import TypedDict, Any
 
-from agents import Agent, FunctionTool, RunContextWrapper, function_tool
+from agents import Agent, FunctionTool, RunContextWrapper
+from agents.decorators import tool
 
 
 class Location(TypedDict):
     lat: float
     long: float
 
-@function_tool  # (1)!
+@tool  # (1)!
 async def fetch_weather(location: Location) -> str:
     # (2)!
     """Fetch the weather for a given location.
@@ -337,7 +339,7 @@ async def fetch_weather(location: Location) -> str:
     return "sunny"
 
 
-@function_tool(name_override="fetch_data")  # (3)!
+@tool(name_override="fetch_data")  # (3)!
 def read_file(ctx: RunContextWrapper[Any], path: str, directory: str | None = None) -> str:
     """Read the contents of a file.
 
@@ -502,15 +504,15 @@ tool = FunctionTool(
 ```python
 from typing import Annotated
 from pydantic import Field
-from agents import function_tool
+from agents.decorators import tool
 
 # Default-based form
-@function_tool
+@tool
 def score_a(score: int = Field(..., ge=0, le=100, description="Score from 0 to 100")) -> str:
     return f"Score recorded: {score}"
 
 # Annotated form
-@function_tool
+@tool
 def score_b(score: Annotated[int, Field(..., ge=0, le=100, description="Score from 0 to 100")]) -> str:
     return f"Score recorded: {score}"
 ```
@@ -521,10 +523,11 @@ def score_b(score: Annotated[int, Field(..., ge=0, le=100, description="Score fr
 
 ```python
 import asyncio
-from agents import Agent, function_tool
+from agents import Agent
+from agents.decorators import tool
 
 
-@function_tool(timeout=2.0)
+@tool(timeout=2.0)
 async def slow_lookup(query: str) -> str:
     await asyncio.sleep(10)
     return f"Result for {query}"
@@ -547,10 +550,11 @@ agent = Agent(
 
 ```python
 import asyncio
-from agents import Agent, Runner, ToolTimeoutError, function_tool
+from agents import Agent, Runner, ToolTimeoutError
+from agents.decorators import tool
 
 
-@function_tool(timeout=1.5, timeout_behavior="raise_exception")
+@tool(timeout=1.5, timeout_behavior="raise_exception")
 async def slow_tool() -> str:
     await asyncio.sleep(5)
     return "done"
@@ -577,7 +581,8 @@ except ToolTimeoutError as e:
 -   如果明确传入 `None`，则任何工具调用错误都会重新引发，由你处理。如果模型生成了无效 JSON，这可能是 `ModelBehaviorError`；如果你的代码崩溃，则可能是 `UserError`，等等。
 
 ```python
-from agents import function_tool, RunContextWrapper
+from agents import RunContextWrapper
+from agents.decorators import tool
 from typing import Any
 
 def my_custom_error_function(context: RunContextWrapper[Any], error: Exception) -> str:
@@ -585,7 +590,7 @@ def my_custom_error_function(context: RunContextWrapper[Any], error: Exception) 
     print(f"A tool call failed with the following error: {error}")
     return "An internal server error occurred. Please try again later."
 
-@function_tool(failure_error_function=my_custom_error_function)
+@tool(failure_error_function=my_custom_error_function)
 def get_user_profile(user_id: str) -> str:
     """Fetches a user profile from a mock API.
      This function demonstrates a 'flaky' or failing API call.
@@ -652,7 +657,10 @@ if __name__ == "__main__":
 状态选项用于配置由工具调用启动的嵌套智能体运行；父运行的对话状态不会自动继承。若要在父运行和嵌套运行之间共享由客户端管理的历史记录，请明确向两者传入相同的 `session`。与 `Runner.run` 一样，应为嵌套运行选择一种状态策略：使用由客户端管理的 `session`，或通过 `previous_response_id` 或 `conversation_id` 在服务端管理延续状态。
 
 ```python
-@function_tool
+from agents.decorators import tool
+
+
+@tool
 async def run_my_agent() -> str:
     """A tool that runs the agent with custom configs"""
 

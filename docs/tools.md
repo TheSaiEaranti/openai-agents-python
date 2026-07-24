@@ -67,10 +67,11 @@ Start with hosted tool search when the candidate tools are already known when yo
 ```python
 from typing import Annotated
 
-from agents import Agent, Runner, ToolSearchTool, function_tool, tool_namespace
+from agents import Agent, Runner, ToolSearchTool, tool_namespace
+from agents.decorators import tool
 
 
-@function_tool(defer_loading=True)
+@tool(defer_loading=True)
 def get_customer_profile(
     customer_id: Annotated[str, "The customer ID to look up."],
 ) -> str:
@@ -78,7 +79,7 @@ def get_customer_profile(
     return f"profile for {customer_id}"
 
 
-@function_tool(defer_loading=True)
+@tool(defer_loading=True)
 def list_open_orders(
     customer_id: Annotated[str, "The customer ID to look up."],
 ) -> str:
@@ -135,8 +136,8 @@ from agents import (
     ModelSettings,
     ProgrammaticToolCallingTool,
     Runner,
-    function_tool,
 )
+from agents.decorators import tool
 
 
 class InventoryOutput(BaseModel):
@@ -144,7 +145,7 @@ class InventoryOutput(BaseModel):
     available_units: int
 
 
-@function_tool(allowed_callers=["programmatic"])
+@tool(allowed_callers=["programmatic"])
 def get_inventory(sku: str) -> InventoryOutput:
     return InventoryOutput(sku=sku, available_units=42)
 
@@ -315,14 +316,15 @@ import json
 
 from typing_extensions import TypedDict, Any
 
-from agents import Agent, FunctionTool, RunContextWrapper, function_tool
+from agents import Agent, FunctionTool, RunContextWrapper
+from agents.decorators import tool
 
 
 class Location(TypedDict):
     lat: float
     long: float
 
-@function_tool  # (1)!
+@tool  # (1)!
 async def fetch_weather(location: Location) -> str:
     # (2)!
     """Fetch the weather for a given location.
@@ -334,7 +336,7 @@ async def fetch_weather(location: Location) -> str:
     return "sunny"
 
 
-@function_tool(name_override="fetch_data")  # (3)!
+@tool(name_override="fetch_data")  # (3)!
 def read_file(ctx: RunContextWrapper[Any], path: str, directory: str | None = None) -> str:
     """Read the contents of a file.
 
@@ -499,15 +501,15 @@ You can use Pydantic's [`Field`](https://docs.pydantic.dev/latest/concepts/field
 ```python
 from typing import Annotated
 from pydantic import Field
-from agents import function_tool
+from agents.decorators import tool
 
 # Default-based form
-@function_tool
+@tool
 def score_a(score: int = Field(..., ge=0, le=100, description="Score from 0 to 100")) -> str:
     return f"Score recorded: {score}"
 
 # Annotated form
-@function_tool
+@tool
 def score_b(score: Annotated[int, Field(..., ge=0, le=100, description="Score from 0 to 100")]) -> str:
     return f"Score recorded: {score}"
 ```
@@ -518,10 +520,11 @@ You can set per-call timeouts for async function tools with `@function_tool(time
 
 ```python
 import asyncio
-from agents import Agent, function_tool
+from agents import Agent
+from agents.decorators import tool
 
 
-@function_tool(timeout=2.0)
+@tool(timeout=2.0)
 async def slow_lookup(query: str) -> str:
     await asyncio.sleep(10)
     return f"Result for {query}"
@@ -544,10 +547,11 @@ You can control timeout handling:
 
 ```python
 import asyncio
-from agents import Agent, Runner, ToolTimeoutError, function_tool
+from agents import Agent, Runner, ToolTimeoutError
+from agents.decorators import tool
 
 
-@function_tool(timeout=1.5, timeout_behavior="raise_exception")
+@tool(timeout=1.5, timeout_behavior="raise_exception")
 async def slow_tool() -> str:
     await asyncio.sleep(5)
     return "done"
@@ -574,7 +578,8 @@ When you create a function tool via `@function_tool`, you can pass a `failure_er
 -   If you explicitly pass `None`, then any tool call errors will be re-raised for you to handle. This could be a `ModelBehaviorError` if the model produced invalid JSON, or a `UserError` if your code crashed, etc.
 
 ```python
-from agents import function_tool, RunContextWrapper
+from agents import RunContextWrapper
+from agents.decorators import tool
 from typing import Any
 
 def my_custom_error_function(context: RunContextWrapper[Any], error: Exception) -> str:
@@ -582,7 +587,7 @@ def my_custom_error_function(context: RunContextWrapper[Any], error: Exception) 
     print(f"A tool call failed with the following error: {error}")
     return "An internal server error occurred. Please try again later."
 
-@function_tool(failure_error_function=my_custom_error_function)
+@tool(failure_error_function=my_custom_error_function)
 def get_user_profile(user_id: str) -> str:
     """Fetches a user profile from a mock API.
      This function demonstrates a 'flaky' or failing API call.
@@ -649,7 +654,10 @@ The `agent.as_tool` function is a convenience method to make it easy to turn an 
 The state options configure the nested agent run started by the tool call; the parent run's conversation state is not inherited automatically. To share client-managed history between the parent and nested runs, explicitly pass the same `session` to both. As with `Runner.run`, choose one state strategy for the nested run: a client-managed `session`, or server-managed continuation through `previous_response_id` or `conversation_id`.
 
 ```python
-@function_tool
+from agents.decorators import tool
+
+
+@tool
 async def run_my_agent() -> str:
     """A tool that runs the agent with custom configs"""
 

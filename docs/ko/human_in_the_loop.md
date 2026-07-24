@@ -19,10 +19,11 @@ search:
 SDK가 인수를 안전하게 검사할 수 없는 경우 호출 가능 승인 규칙은 승인 필요 상태로 안전하게 실패합니다. 인수가 잘못된 JSON이거나, 유효한 JSON이지만 객체가 아닌 경우(예: `null` 또는 목록), 혹은 `NaN`, `Infinity`, `-Infinity` 같은 비표준 상수를 포함하는 경우 호출 가능 객체는 실행되지 않으며 해당 호출에는 수동 승인이 필요합니다. 이 동작은 Runner 및 Realtime 도구 호출에서 동일합니다.
 
 ```python
-from agents import Agent, function_tool
+from agents import Agent
+from agents.decorators import tool
 
 
-@function_tool(needs_approval=True)
+@tool(needs_approval=True)
 async def cancel_order(order_id: int) -> str:
     return f"Cancelled order {order_id}"
 
@@ -31,7 +32,7 @@ async def requires_review(_ctx, params, _call_id) -> bool:
     return "refund" in params.get("subject", "").lower()
 
 
-@function_tool(needs_approval=requires_review)
+@tool(needs_approval=requires_review)
 async def send_email(subject: str, body: str) -> str:
     return f"Sent '{subject}'"
 
@@ -112,14 +113,15 @@ import asyncio
 import json
 from pathlib import Path
 
-from agents import Agent, Runner, RunState, function_tool
+from agents import Agent, Runner, RunState
+from agents.decorators import tool
 
 
 async def needs_oakland_approval(_ctx, params, _call_id) -> bool:
     return "Oakland" in params.get("city", "")
 
 
-@function_tool(needs_approval=needs_oakland_approval)
+@tool(needs_approval=needs_oakland_approval)
 async def get_temperature(city: str) -> str:
     return f"The temperature in {city} is 20° Celsius"
 

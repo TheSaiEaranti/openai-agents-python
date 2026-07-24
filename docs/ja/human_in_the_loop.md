@@ -19,10 +19,11 @@ search:
 SDK が引数を安全に検査できない場合、呼び出し可能な承認ルールは安全側に倒れ、承認を必須とします。引数が不正な JSON である場合、有効な JSON でもオブジェクトではない場合（たとえば、`null` やリスト）、または `NaN`、`Infinity`、`-Infinity` などの非標準定数が含まれる場合、呼び出し可能オブジェクトは実行されず、その呼び出しには手動承認が必要です。この動作は、Runner と Realtime のツール呼び出しで同じです。
 
 ```python
-from agents import Agent, function_tool
+from agents import Agent
+from agents.decorators import tool
 
 
-@function_tool(needs_approval=True)
+@tool(needs_approval=True)
 async def cancel_order(order_id: int) -> str:
     return f"Cancelled order {order_id}"
 
@@ -31,7 +32,7 @@ async def requires_review(_ctx, params, _call_id) -> bool:
     return "refund" in params.get("subject", "").lower()
 
 
-@function_tool(needs_approval=requires_review)
+@tool(needs_approval=requires_review)
 async def send_email(subject: str, body: str) -> str:
     return f"Sent '{subject}'"
 
@@ -112,14 +113,15 @@ import asyncio
 import json
 from pathlib import Path
 
-from agents import Agent, Runner, RunState, function_tool
+from agents import Agent, Runner, RunState
+from agents.decorators import tool
 
 
 async def needs_oakland_approval(_ctx, params, _call_id) -> bool:
     return "Oakland" in params.get("city", "")
 
 
-@function_tool(needs_approval=needs_oakland_approval)
+@tool(needs_approval=needs_oakland_approval)
 async def get_temperature(city: str) -> str:
     return f"The temperature in {city} is 20° Celsius"
 

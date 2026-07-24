@@ -19,10 +19,11 @@ search:
 当 SDK 无法安全检查参数时，可调用审批规则会采用失败关闭策略。如果参数是格式错误的 JSON、是有效 JSON 但并非对象（例如`null`或列表），或者包含`NaN`、`Infinity`或`-Infinity`等非标准常量，则不会调用该可调用对象，而是要求手动审批。Runner 和 Realtime 工具调用的行为相同。
 
 ```python
-from agents import Agent, function_tool
+from agents import Agent
+from agents.decorators import tool
 
 
-@function_tool(needs_approval=True)
+@tool(needs_approval=True)
 async def cancel_order(order_id: int) -> str:
     return f"Cancelled order {order_id}"
 
@@ -31,7 +32,7 @@ async def requires_review(_ctx, params, _call_id) -> bool:
     return "refund" in params.get("subject", "").lower()
 
 
-@function_tool(needs_approval=requires_review)
+@tool(needs_approval=requires_review)
 async def send_email(subject: str, body: str) -> str:
     return f"Sent '{subject}'"
 
@@ -112,14 +113,15 @@ import asyncio
 import json
 from pathlib import Path
 
-from agents import Agent, Runner, RunState, function_tool
+from agents import Agent, Runner, RunState
+from agents.decorators import tool
 
 
 async def needs_oakland_approval(_ctx, params, _call_id) -> bool:
     return "Oakland" in params.get("city", "")
 
 
-@function_tool(needs_approval=needs_oakland_approval)
+@tool(needs_approval=needs_oakland_approval)
 async def get_temperature(city: str) -> str:
     return f"The temperature in {city} is 20° Celsius"
 

@@ -49,9 +49,10 @@ search:
 | `reset_tool_choice` | 否 | 在工具调用后重置`tool_choice`（默认值：`True`），以避免工具使用循环。请参阅[工具的强制使用](#forcing-tool-use)。 |
 
 ```python
-from agents import Agent, function_tool
+from agents import Agent
+from agents.decorators import tool
 
-@function_tool
+@tool
 def get_weather(city: str) -> str:
     """returns weather info for the specified city."""
     return f"The weather in {city} is sunny"
@@ -332,9 +333,10 @@ robot_agent = pirate_agent.clone(
 使用 OpenAI Responses 工具搜索时，按名称指定工具的选择方式受到更多限制：你不能通过`tool_choice`指定裸命名空间名称或仅延迟加载的工具，而且`tool_choice="tool_search"`不会指定[`ToolSearchTool`][agents.tool.ToolSearchTool]。在这些情况下，建议使用`auto`或`required`。有关 Responses 特有的限制，请参阅[托管工具搜索](tools.md#hosted-tool-search)。
 
 ```python
-from agents import Agent, function_tool, ModelSettings
+from agents import Agent, ModelSettings
+from agents.decorators import tool
 
-@function_tool
+@tool
 def get_weather(city: str) -> str:
     """Returns weather info for the specified city."""
     return f"The weather in {city} is sunny"
@@ -355,9 +357,10 @@ agent = Agent(
 - `"stop_on_first_tool"`：将第一个工具调用的输出用作最终响应，不再由LLM进一步处理。
 
 ```python
-from agents import Agent, function_tool
+from agents import Agent
+from agents.decorators import tool
 
-@function_tool
+@tool
 def get_weather(city: str) -> str:
     """Returns weather info for the specified city."""
     return f"The weather in {city} is sunny"
@@ -373,15 +376,16 @@ agent = Agent(
 - `StopAtTools(stop_at_tool_names=[...])`：如果调用了任何指定工具，则停止运行，并将其输出用作最终响应。
 
 ```python
-from agents import Agent, function_tool
+from agents import Agent
+from agents.decorators import tool
 from agents.agent import StopAtTools
 
-@function_tool
+@tool
 def get_weather(city: str) -> str:
     """Returns weather info for the specified city."""
     return f"The weather in {city} is sunny"
 
-@function_tool
+@tool
 def sum_numbers(a: int, b: int) -> int:
     """Adds two numbers."""
     return a + b
@@ -397,11 +401,12 @@ agent = Agent(
 - `ToolsToFinalOutputFunction`：用于处理工具结果，并决定是停止还是交由LLM继续处理的自定义函数。
 
 ```python
-from agents import Agent, function_tool, FunctionToolResult, RunContextWrapper
+from agents import Agent, FunctionToolResult, RunContextWrapper
+from agents.decorators import tool
 from agents.agent import ToolsToFinalOutputResult
 from typing import List, Any
 
-@function_tool
+@tool
 def get_weather(city: str) -> str:
     """Returns weather info for the specified city."""
     return f"The weather in {city} is sunny"

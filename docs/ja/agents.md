@@ -49,9 +49,10 @@ SDK は、OpenAI モデルに対してデフォルトで Responses API を使用
 | `reset_tool_choice` | いいえ | ツール使用のループを回避するため、ツール呼び出し後に `tool_choice` をリセットします（デフォルト: `True`）。[ツール使用の強制](#forcing-tool-use)を参照してください。 |
 
 ```python
-from agents import Agent, function_tool
+from agents import Agent
+from agents.decorators import tool
 
-@function_tool
+@tool
 def get_weather(city: str) -> str:
     """returns weather info for the specified city."""
     return f"The weather in {city} is sunny"
@@ -332,9 +333,10 @@ robot_agent = pirate_agent.clone(
 OpenAI Responses のツール検索を使用する場合、名前を指定したツール選択にはより多くの制限があります。`tool_choice` では、未修飾の名前空間名や遅延専用ツールを対象にできず、`tool_choice="tool_search"` で [`ToolSearchTool`][agents.tool.ToolSearchTool] を対象にすることもできません。このような場合は、`auto` または `required` を優先してください。Responses 固有の制約については、[ホスト型ツール検索](tools.md#hosted-tool-search)を参照してください。
 
 ```python
-from agents import Agent, function_tool, ModelSettings
+from agents import Agent, ModelSettings
+from agents.decorators import tool
 
-@function_tool
+@tool
 def get_weather(city: str) -> str:
     """Returns weather info for the specified city."""
     return f"The weather in {city} is sunny"
@@ -355,9 +357,10 @@ agent = Agent(
 - `"stop_on_first_tool"`: 最初のツール呼び出しの出力を、追加の LLM 処理を行わずに最終レスポンスとして使用します。
 
 ```python
-from agents import Agent, function_tool
+from agents import Agent
+from agents.decorators import tool
 
-@function_tool
+@tool
 def get_weather(city: str) -> str:
     """Returns weather info for the specified city."""
     return f"The weather in {city} is sunny"
@@ -373,15 +376,16 @@ agent = Agent(
 - `StopAtTools(stop_at_tool_names=[...])`: 指定したツールのいずれかが呼び出された場合に停止し、その出力を最終レスポンスとして使用します。
 
 ```python
-from agents import Agent, function_tool
+from agents import Agent
+from agents.decorators import tool
 from agents.agent import StopAtTools
 
-@function_tool
+@tool
 def get_weather(city: str) -> str:
     """Returns weather info for the specified city."""
     return f"The weather in {city} is sunny"
 
-@function_tool
+@tool
 def sum_numbers(a: int, b: int) -> int:
     """Adds two numbers."""
     return a + b
@@ -397,11 +401,12 @@ agent = Agent(
 - `ToolsToFinalOutputFunction`: ツールの実行結果を処理し、停止するか LLM での処理を継続するかを決定するカスタム関数です。
 
 ```python
-from agents import Agent, function_tool, FunctionToolResult, RunContextWrapper
+from agents import Agent, FunctionToolResult, RunContextWrapper
+from agents.decorators import tool
 from agents.agent import ToolsToFinalOutputResult
 from typing import List, Any
 
-@function_tool
+@tool
 def get_weather(city: str) -> str:
     """Returns weather info for the specified city."""
     return f"The weather in {city} is sunny"
