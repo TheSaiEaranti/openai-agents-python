@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+from collections.abc import Awaitable, Coroutine
 from dataclasses import dataclass
 from typing import Annotated, Any, Literal, cast
 
@@ -258,6 +259,131 @@ def test_function_tool_infers_typed_dict_and_dataclass_output_schemas() -> None:
     assert dataclass_tool.output_json_schema is not None
     assert dataclass_tool.output_json_schema["type"] == "object"
     assert dataclass_tool.output_json_schema["additionalProperties"] is False
+
+
+@pytest.mark.asyncio
+async def test_function_tool_infers_awaitable_output_schemas() -> None:
+    def awaitable_tool(sku: str) -> Awaitable[InventoryOutput]:
+        async def result() -> InventoryOutput:
+            return InventoryOutput(sku=sku, available_units=42)
+
+        return result()
+
+    def coroutine_tool(sku: str) -> Coroutine[Any, Any, InventoryOutput]:
+        async def result() -> InventoryOutput:
+            return InventoryOutput(sku=sku, available_units=42)
+
+        return result()
+
+    for handler in (awaitable_tool, coroutine_tool):
+        tool = function_tool(handler, allowed_callers=["programmatic"])
+
+        assert tool.output_json_schema is not None
+        assert tool.output_json_schema["title"] == "InventoryOutput"
+
+        context = ToolContext(
+            None,
+            tool_name=tool.name,
+            tool_call_id="awaitable-output",
+            tool_arguments='{"sku": "A-1"}',
+            tool_call=_function_call(),
+        )
+        assert await tool.on_invoke_tool(context, '{"sku": "A-1"}') == InventoryOutput(
+            sku="A-1",
+            available_units=42,
+        )
+
+
+@pytest.mark.asyncio
+async def test_function_tool_infers_maybe_awaitable_union_output_schema() -> None:
+    def lookup_inventory(await_result: bool) -> Awaitable[InventoryOutput] | InventoryOutput:
+        output = InventoryOutput(sku="A-1", available_units=42)
+
+        async def result() -> InventoryOutput:
+            return output
+
+        return result() if await_result else output
+
+    tool = function_tool(lookup_inventory, allowed_callers=["programmatic"])
+
+    assert tool.output_json_schema is not None
+    assert tool.output_json_schema["title"] == "InventoryOutput"
+    for await_result in (False, True):
+        context = ToolContext(
+            None,
+            tool_name=tool.name,
+            tool_call_id="maybe-awaitable-output",
+            tool_arguments=json.dumps({"await_result": await_result}),
+            tool_call=_function_call(),
+        )
+        assert await tool.on_invoke_tool(
+            context,
+            json.dumps({"await_result": await_result}),
+        ) == InventoryOutput(sku="A-1", available_units=42)
+
+
+@pytest.mark.asyncio
+async def test_function_tool_infers_future_and_task_output_schemas() -> None:
+    loop = asyncio.get_running_loop()
+    future: asyncio.Future[InventoryOutput] = loop.create_future()
+    future.set_result(InventoryOutput(sku="future", available_units=1))
+    task = loop.create_task(
+        asyncio.sleep(
+            0,
+            result=InventoryOutput(sku="task", available_units=2),
+        )
+    )
+
+    def future_tool() -> asyncio.Future[InventoryOutput]:
+        return future
+
+    def task_tool() -> asyncio.Task[InventoryOutput]:
+        return task
+
+    for handler, expected in (
+        (future_tool, InventoryOutput(sku="future", available_units=1)),
+        (task_tool, InventoryOutput(sku="task", available_units=2)),
+    ):
+        tool = function_tool(handler, allowed_callers=["programmatic"])
+
+        assert tool.output_json_schema is not None
+        assert tool.output_json_schema["title"] == "InventoryOutput"
+        context = ToolContext(
+            None,
+            tool_name=tool.name,
+            tool_call_id="concrete-awaitable-output",
+            tool_arguments="{}",
+            tool_call=_function_call(),
+        )
+        assert await tool.on_invoke_tool(context, "{}") == expected
+
+
+@pytest.mark.asyncio
+async def test_function_tool_preserves_annotated_awaitable_return_metadata() -> None:
+    def lookup_inventory() -> Annotated[
+        Awaitable[InventoryOutput],
+        Field(description="Inventory result"),
+    ]:
+        async def result() -> InventoryOutput:
+            return InventoryOutput(sku="A-1", available_units=42)
+
+        return result()
+
+    tool = function_tool(lookup_inventory, allowed_callers=["programmatic"])
+
+    assert tool.output_json_schema is not None
+    assert tool.output_json_schema["description"] == "Inventory result"
+    context = ToolContext(
+        None,
+        tool_name=tool.name,
+        tool_call_id="annotated-awaitable-output",
+        tool_arguments="{}",
+        tool_call=_function_call(),
+    )
+    assert await tool.on_invoke_tool(context, "{}") == InventoryOutput(
+        sku="A-1",
+        available_units=42,
+    )
 
 
 def test_function_tool_treats_annotated_plain_returns_as_untyped() -> None:

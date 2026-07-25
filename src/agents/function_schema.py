@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import contextlib
+import functools
 import inspect
 import logging
 import re
+import sys
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Annotated, Any, Literal, get_args, get_origin, get_type_hints
@@ -13,10 +15,13 @@ from griffe import Docstring, DocstringSectionKind  # type: ignore[import-untype
 from pydantic import BaseModel, Field, create_model
 from pydantic.fields import FieldInfo
 
+from ._callable_utils import get_callable_call_descriptor, unwrap_callable_descriptor
 from .exceptions import UserError
 from .run_context import RunContextWrapper
 from .strict_schema import ensure_strict_json_schema
 from .tool_context import ToolContext
+
+_CONTEXT_NOT_PROVIDED = object()
 
 
 @dataclass
@@ -43,25 +48,35 @@ class FuncSchema:
     return_annotation: Any = inspect.Signature.empty
     """The resolved return annotation, including `Annotated` metadata when present."""
 
-    def to_call_args(self, data: BaseModel) -> tuple[list[Any], dict[str, Any]]:
+    def to_call_args(
+        self,
+        data: BaseModel,
+        *,
+        context: Any = _CONTEXT_NOT_PROVIDED,
+    ) -> tuple[list[Any], dict[str, Any]]:
         """
         Converts validated data from the Pydantic model into (args, kwargs), suitable for calling
-        the original function.
+        the original function. When provided, context is inserted according to the declared
+        parameter kind.
         """
         positional_args: list[Any] = []
         keyword_args: dict[str, Any] = {}
         seen_var_positional = False
 
-        # Use enumerate() so we can skip the first parameter if it's context.
+        # Use enumerate() so we can identify the first parameter when it is context.
         for idx, (name, param) in enumerate(self.signature.parameters.items()):
-            # If the function takes a RunContextWrapper and this is the first parameter, skip it.
             if self.takes_context and idx == 0:
-                continue
-
-            value = getattr(data, name, None)
+                if context is _CONTEXT_NOT_PROVIDED:
+                    continue
+                value = context
+            else:
+                value = getattr(data, name, None)
             if param.kind == param.VAR_POSITIONAL:
-                # e.g. *args: extend positional args and mark that *args is now seen
-                positional_args.extend(value or [])
+                if self.takes_context and idx == 0:
+                    positional_args.append(value)
+                else:
+                    # e.g. *args: extend positional args.
+                    positional_args.extend(value or [])
                 seen_var_positional = True
             elif param.kind == param.VAR_KEYWORD:
                 # e.g. **kwargs handling
@@ -83,7 +98,7 @@ class FuncDocumentation:
     """Contains metadata about a Python function, extracted from its docstring."""
 
     name: str
-    """The name of the function, via `__name__`."""
+    """The resolved name of the callable."""
     description: str | None
     """The description of the function, derived from the docstring."""
     param_descriptions: dict[str, str] | None
@@ -91,6 +106,144 @@ class FuncDocumentation:
 
 
 DocstringStyle = Literal["google", "numpy", "sphinx"]
+
+
+def _is_context_annotation(annotation: Any) -> bool:
+    """Return whether an annotation denotes an injected function-tool context."""
+    while get_origin(annotation) is Annotated:
+        args = get_args(annotation)
+        if not args:
+            break
+        annotation = args[0]
+    origin = get_origin(annotation) or annotation
+    return origin is RunContextWrapper or origin is ToolContext
+
+
+def _get_callable_name(func: Callable[..., Any]) -> str:
+    """Return a stable name for functions and callable objects."""
+    name = getattr(func, "__name__", None)
+    if isinstance(name, str):
+        return name
+    if isinstance(func, functools.partial):
+        return _get_callable_name(func.func)
+    return type(func).__name__
+
+
+def _get_callable_doc(func: Callable[..., Any]) -> str | None:
+    """Return documentation from a callable or its invocation method."""
+    if isinstance(func, functools.partial):
+        return _get_callable_doc(func.func)
+    doc = inspect.getdoc(func)
+    if doc is not None or inspect.isroutine(func) or inspect.isclass(func):
+        return doc
+    return inspect.getdoc(type(func).__call__)
+
+
+def _get_signature_type_hints(
+    func: Callable[..., Any], signature: inspect.Signature
+) -> dict[str, Any]:
+    """Resolve annotations published by an explicit callable signature."""
+    annotations = {
+        name: parameter.annotation
+        for name, parameter in signature.parameters.items()
+        if parameter.annotation is not inspect.Signature.empty
+    }
+    if signature.return_annotation is not inspect.Signature.empty:
+        annotations["return"] = signature.return_annotation
+    if not annotations:
+        return {}
+
+    def annotation_source() -> None:
+        pass
+
+    annotation_source.__annotations__ = annotations
+
+    namespace_source: Any = func.func if isinstance(func, functools.partial) else func
+    wrapper_globalns = getattr(namespace_source, "__globals__", None)
+    namespace_target = inspect.unwrap(namespace_source)
+    target_globalns = getattr(namespace_target, "__globals__", None)
+    globalns = dict(target_globalns) if target_globalns is not None else {}
+    if wrapper_globalns is not None:
+        globalns.update(wrapper_globalns)
+
+    if inspect.isclass(namespace_source):
+        local_owner: type[Any] | None = namespace_source
+    elif inspect.isroutine(namespace_source):
+        local_owner = None
+    else:
+        local_owner = type(namespace_source)
+
+    localns: dict[str, Any] = {}
+    if local_owner is not None:
+        module = sys.modules.get(local_owner.__module__)
+        if module is not None:
+            globalns.update(vars(module))
+        localns.update(vars(local_owner))
+        localns[local_owner.__name__] = local_owner
+    return get_type_hints(
+        annotation_source,
+        globalns=globalns,
+        localns=localns,
+        include_extras=True,
+    )
+
+
+def _get_callable_type_hints(
+    func: Callable[..., Any], signature: inspect.Signature
+) -> dict[str, Any]:
+    """Resolve type hints from a function or a callable object's ``__call__`` method."""
+    if isinstance(getattr(func, "__signature__", None), inspect.Signature):
+        return _get_signature_type_hints(func, signature)
+
+    if isinstance(func, functools.partial):
+        wrapped_signature = inspect.signature(func.func)
+        partial_type_hints = _get_callable_type_hints(func.func, wrapped_signature)
+        positionally_bound = wrapped_signature.bind_partial(*func.args).arguments
+        for name in positionally_bound:
+            parameter = wrapped_signature.parameters[name]
+            annotation = partial_type_hints.get(name, parameter.annotation)
+            if _is_context_annotation(annotation):
+                raise UserError(
+                    "functools.partial cannot positionally bind a "
+                    "RunContextWrapper/ToolContext parameter because the current run context "
+                    "must be supplied at invocation."
+                )
+        return {
+            name: annotation
+            for name, annotation in partial_type_hints.items()
+            if name == "return" or name in signature.parameters
+        }
+
+    if inspect.isroutine(func) or inspect.isclass(func):
+        return get_type_hints(func, include_extras=True)
+
+    try:
+        instance_vars = vars(func)
+    except TypeError:
+        instance_vars = {}
+
+    if instance_vars.get("__annotations__") or "__annotate__" in instance_vars:
+        try:
+            return get_type_hints(func, include_extras=True)
+        except TypeError:
+            return inspect.get_annotations(func, eval_str=True)
+
+    unwrapped = inspect.unwrap(func)
+    if unwrapped is not func:
+        return _get_callable_type_hints(unwrapped, signature)
+
+    call_owner, call_descriptor = get_callable_call_descriptor(func)
+    call_method = unwrap_callable_descriptor(call_descriptor)
+    localns = dict(vars(call_owner))
+    localns[call_owner.__name__] = call_owner
+    call_type_hints = get_type_hints(call_method, localns=localns, include_extras=True)
+    if isinstance(call_descriptor, functools.partialmethod):
+        return {
+            name: annotation
+            for name, annotation in call_type_hints.items()
+            if name == "return" or name in signature.parameters
+        }
+    return call_type_hints
 
 
 # As of Feb 2025, the automatic style detection in griffe is an Insiders feature. This
@@ -214,8 +367,8 @@ def generate_func_documentation(
         A FuncDocumentation object containing the function's name, description, and parameter
         descriptions.
     """
-    name = func.__name__
-    doc = inspect.getdoc(func)
+    name = _get_callable_name(func)
+    doc = _get_callable_doc(func)
     if not doc:
         return FuncDocumentation(name=name, description=None, param_descriptions=None)
 
@@ -240,7 +393,7 @@ def generate_func_documentation(
     }
 
     return FuncDocumentation(
-        name=func.__name__,
+        name=name,
         description=description,
         param_descriptions=param_descriptions or None,
     )
@@ -319,7 +472,8 @@ def function_schema(
         doc_info = None
         param_descs = {}
 
-    type_hints_with_extras = get_type_hints(func, include_extras=True)
+    sig = inspect.signature(func)
+    type_hints_with_extras = _get_callable_type_hints(func, sig)
     type_hints: dict[str, Any] = {}
     annotated_param_descs: dict[str, str] = {}
     param_metadata: dict[str, tuple[Any, ...]] = {}
@@ -340,10 +494,9 @@ def function_schema(
         param_descs.setdefault(name, description)
 
     # Ensure name_override takes precedence even if docstring info is disabled.
-    func_name = name_override or (doc_info.name if doc_info else func.__name__)
+    func_name = name_override or (doc_info.name if doc_info else _get_callable_name(func))
 
     # 2. Inspect function signature and get type hints
-    sig = inspect.signature(func)
     params = list(sig.parameters.items())
     takes_context = False
     filtered_params = []
@@ -353,8 +506,12 @@ def function_schema(
         # Prefer the evaluated type hint if available
         ann = type_hints.get(first_name, first_param.annotation)
         if ann != inspect._empty:
-            origin = get_origin(ann) or ann
-            if origin is RunContextWrapper or origin is ToolContext:
+            if _is_context_annotation(ann):
+                if first_param.kind == first_param.VAR_KEYWORD:
+                    raise UserError(
+                        "RunContextWrapper/ToolContext cannot be used as a **kwargs parameter "
+                        f"in function {func_name}"
+                    )
                 takes_context = True  # Mark that the function takes context
             else:
                 filtered_params.append((first_name, first_param))
@@ -365,11 +522,10 @@ def function_schema(
     for name, param in params[1:]:
         ann = type_hints.get(name, param.annotation)
         if ann != inspect._empty:
-            origin = get_origin(ann) or ann
-            if origin is RunContextWrapper or origin is ToolContext:
+            if _is_context_annotation(ann):
                 raise UserError(
                     f"RunContextWrapper/ToolContext param found at non-first position in function"
-                    f" {func.__name__}"
+                    f" {func_name}"
                 )
         filtered_params.append((name, param))
 
